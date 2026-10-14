@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>스마트 교실 자리 배치 시뮬레이터</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tone.js for Sound Effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <!-- Google Fonts (Pretendard & Noto Sans KR) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&family=Gaegu:wght@700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Pretendard', sans-serif;
+    }
+    .font-chalkboard {
+      font-family: 'Gaegu', cursive, sans-serif;
+    }
+    /* Perspective for 3D card flips */
+    .perspective-1000 {
+      perspective: 1000px;
+    }
+    .preserve-3d {
+      transform-style: preserve-3d;
+    }
+    .backface-hidden {
+      backface-visibility: hidden;
+    }
+    .rotate-y-180 {
+      transform: rotateY(180deg);
+    }
+    /* Subtle pulse animation for rolling state */
+    @keyframes slotRolling {
+      0% { transform: translateY(-3px) scale(0.98); }
+      50% { transform: translateY(2px) scale(1.02); }
+      100% { transform: translateY(-3px) scale(0.98); }
+    }
+    .animate-rolling {
+      animation: slotRolling 0.15s infinite ease-in-out;
+    }
+    /* Print Styles */
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body {
+        background: white !important;
+        color: black !important;
+        padding: 0 !important;
+      }
+      .print-border {
+        border: 2px solid #333 !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Top Navigation & Controls Bar -->
+  <header class="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-200">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            교실 자리 배치 시뮬레이터
+            <span class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">학생 25명 / 책상 28개</span>
+          </h1>
+          <p class="text-xs text-slate-500">6줄 배치 · 교탁 기준 좌측(1번)부터 우측(6번) 순서</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center flex-wrap gap-2">
+        <!-- Sound Toggle -->
+        <button id="soundToggleBtn" onclick="toggleSound()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition" title="효과음 켜기/끄기">
+          <svg id="soundOnIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+          </svg>
+          <svg id="soundOffIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+          </svg>
+        </button>
+
+        <!-- Student Names Modal Trigger -->
+        <button onclick="openStudentModal()" class="px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+          명단 관리
+        </button>
+
+        <!-- Print Button -->
+        <button onclick="window.print()" class="px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H9v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+          </svg>
+          인쇄
+        </button>
+
+        <!-- Instant Shuffle Button -->
+        <button onclick="triggerSeating(false)" id="instantBtn" class="px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition">
+          즉시 배치
+        </button>
+
+        <!-- Animated Shuffle Button -->
+        <button onclick="triggerSeating(true)" id="shuffleBtn" class="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-lg hover:from-indigo-700 hover:to-indigo-800 transition shadow-md shadow-indigo-200 flex items-center gap-1.5 active:scale-95">
+          <svg class="w-4 h-4 animate-spin hidden" id="loadingSpinner" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <svg id="diceIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+          </svg>
+          <span>랜덤 배치 시작!</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+
+    <!-- Mode & Instruction Help Ribbon -->
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-sm no-print">
+      <div class="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
+        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-xs">i</span>
+        <span>자리 교환을 원하시면 두 책상을 차례대로 클릭하세요. 자물쇠 아이콘으로 특정 학생 자리를 고정할 수 있습니다.</span>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-medium text-slate-500">
+        <div class="flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          <span>배정 완료 (25명)</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full bg-slate-300 border border-slate-400 border-dashed"></span>
+          <span>빈 책상 (3석)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Classroom Canvas (Chalkboard & Desks) -->
+    <div class="bg-slate-800/95 p-5 sm:p-8 rounded-3xl shadow-2xl border-4 border-slate-700 text-white relative overflow-hidden">
+      <!-- Background subtle grid pattern -->
+      <div class="absolute inset-0 opacity-5 pointer-events-none" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 24px 24px;"></div>
+
+      <!-- TEACHER'S CHALKBOARD & PODIUM AREA -->
+      <div class="max-w-3xl mx-auto mb-8 sm:mb-10 text-center relative z-10">
+        <!-- Blackboard Graphic -->
+        <div class="bg-emerald-900 border-8 border-amber-950 rounded-2xl py-4 px-6 shadow-inner relative mx-auto mb-4">
+          <div class="absolute top-2 left-3 w-3 h-3 rounded-full bg-white/20"></div>
+          <div class="absolute top-2 right-3 w-3 h-3 rounded-full bg-white/20"></div>
+          <h2 class="text-2xl sm:text-3xl font-chalkboard text-emerald-100 tracking-wider font-bold">
+            칠 판 (FRONT)
+          </h2>
+          <p class="text-emerald-300/80 text-xs sm:text-sm mt-0.5 font-chalkboard">
+            오늘의 바른 자세가 내일의 멋진 나를 만듭니다 ✨
+          </p>
+        </div>
+
+        <!-- Teacher's Podium (교탁) -->
+        <div class="inline-flex items-center gap-2 bg-amber-800 text-amber-100 px-6 py-2 rounded-xl border-2 border-amber-900 shadow-md">
+          <svg class="w-5 h-5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+          </svg>
+          <span class="font-bold text-sm tracking-wide">교 탁 (선생님 자리)</span>
+        </div>
+
+        <!-- Direction indicators -->
+        <div class="flex justify-between items-center text-xs font-semibold text-slate-400 mt-2 px-2 sm:px-6">
+          <span class="flex items-center gap-1">← 교탁 기준 왼쪽 (1번 시작)</span>
+          <span class="text-slate-500">앞 쪽</span>
+          <span class="flex items-center gap-1">교탁 기준 오른쪽 (6번 끝) →</span>
+        </div>
+      </div>
+
+      <!-- 6-Column Grid Layout for the 28 Desks -->
+      <div id="seatingGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 relative z-10">
+        <!-- Javascript will dynamically inject the 28 desk cards here -->
+      </div>
+
+      <!-- Classroom Back Label -->
+      <div class="text-center text-xs font-medium text-slate-400 mt-8 pt-4 border-t border-slate-700/60">
+        교실 뒤쪽 (사물함 / 게시판)
+      </div>
+    </div>
+
+    <!-- Summary List & Quick Inspector Section -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 no-print">
+      <!-- Assigned Roster Card -->
+      <div class="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            학생별 배정된 책상 번호 안내
+          </h3>
+          <span class="text-xs text-slate-500">학생 번호순 정렬</span>
+        </div>
+        <div id="studentRosterView" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
+          <!-- Student lookup tags populated by JS -->
+        </div>
+      </div>
+
+      <!-- Quick Classroom Settings & Rules Card -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2 mb-3">
+            <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            배정 규칙 및 설정
+          </h3>
+          <ul class="text-xs text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+              <span class="text-indigo-500 font-bold">•</span>
+              <span><strong>책상 고유 번호:</strong> 1열(1~6번), 2열(7~12번), 3열(13~18번), 4열(19~24번), 5열(25~28번)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-indigo-500 font-bold">•</span>
+              <span><strong>빈자리 규칙:</strong> 전체 28석 중 무작위 3석은 비어있게 배정됩니다.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-indigo-500 font-bold">•</span>
+              <span><strong>수동 교체:</strong> 교체가 필요한 두 자리를 차례로 누르면 즉시 교체됩니다.</span>
+            </li>
+          </ul>
+        </div>
+
+        <button onclick="resetToSequential()" class="w-full mt-4 py-2 px-3 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 border border-slate-200 rounded-xl transition">
+          초기 순서대로 정렬 (1번 책상 = 1번 학생)
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Student Roster Edit Modal -->
+  <div id="studentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-slate-900 text-lg">학생 명단 관리 (1~25번)</h3>
+          <p class="text-xs text-slate-500">학생 번호별 이름을 등록하면 자리표에 이름이 함께 표시됩니다.</p>
+        </div>
+        <button onclick="closeStudentModal()" class="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-4 flex-1">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+          <span class="text-xs text-slate-500">기본값 "1번 학생" 대신 실제 학생 이름을 작성해 보세요.</span>
+          <button onclick="fillSampleNames()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">
+            예시 이름 채우기
+          </button>
+        </div>
+        <div id="studentInputsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <!-- Inputs dynamically generated -->
+        </div>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-3xl flex justify-end gap-2">
+        <button onclick="closeStudentModal()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+          닫기
+        </button>
+        <button onclick="saveStudentNames()" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-200 transition">
+          저장 적용
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Message Box (No window.alert) -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    // --- Application Constants & State ---
+    const TOTAL_DESKS = 28;
+    const TOTAL_STUDENTS = 25;
+    const DESKS_PER_ROW = 6;
+
+    // Student roster state (id 1 to 25)
+    let students = Array.from({ length: TOTAL_STUDENTS }, (_, i) => ({
+      id: i + 1,
+      name: `${i + 1}번 학생`
+    }));
+
+    // Desks state (id 1 to 28)
+    // assignedStudentId: number | null (null means vacant seat)
+    // locked: boolean (teacher can pin a student to this desk)
+    let desks = Array.from({ length: TOTAL_DESKS }, (_, i) => ({
+      deskId: i + 1,
+      assignedStudentId: (i + 1 <= TOTAL_STUDENTS) ? i + 1 : null,
+      locked: false
+    }));
+
+    // Selection state for swapping seats
+    let selectedDeskId = null;
+    let isRolling = false;
+    let soundEnabled = true;
+
+    // --- Audio Synthesis Setup via Tone.js ---
+    let synth = null;
+    let chimeSynth = null;
+
+    function initAudio() {
+      if (!synth && window.Tone) {
+        try {
+          synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.01, release: 0.1 }
+          }).toDestination();
+          synth.volume.value = -12;
+
+          chimeSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.01, decay: 0.5, sustain: 0.2, release: 0.8 }
+          }).toDestination();
+          chimeSynth.volume.value = -8;
+        } catch (e) {
+          console.warn("Audio init warning:", e);
+        }
+      }
+    }
+
+    function playTickSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        if (Tone.context.state !== 'running') {
+          Tone.start();
+        }
+        const notes = ["C5", "D5", "E5", "G5", "A5"];
+        const randomNote = notes[Math.floor(Math.random() * notes.length)];
+        synth.triggerAttackRelease(randomNote, "32n");
+      } catch (err) {}
+    }
+
+    function playFanfareSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        if (Tone.context.state !== 'running') {
+          Tone.start();
+        }
+        const now = Tone.now();
+        chimeSynth.triggerAttackRelease(["C5", "E5", "G5"], "8n", now);
+        chimeSynth.triggerAttackRelease(["D5", "F#5", "A5"], "8n", now + 0.15);
+        chimeSynth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n", now + 0.35);
+      } catch (err) {}
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      document.getElementById('soundOnIcon').classList.toggle('hidden', !soundEnabled);
+      document.getElementById('soundOffIcon').classList.toggle('hidden', soundEnabled);
+      showToast(soundEnabled ? "효과음이 켜졌습니다." : "효과음이 꺼졌습니다.", "info");
+    }
+
+    // --- Toast Notification System ---
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      
+      let bgStyle = "bg-slate-900 text-white";
+      let icon = "🔔";
+      if (type === "success") {
+        bgStyle = "bg-emerald-600 text-white";
+        icon = "🎉";
+      } else if (type === "warning") {
+        bgStyle = "bg-amber-600 text-white";
+        icon = "⚠️";
+      }
+
+      toast.className = `flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-sm font-semibold pointer-events-auto transition-all transform duration-300 translate-y-4 opacity-0 ${bgStyle}`;
+      toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+      
+      container.appendChild(toast);
+      
+      // Animate entry
+      requestAnimationFrame(() => {
+        toast.classList.remove("translate-y-4", "opacity-0");
+      });
+
+      setTimeout(() => {
+        toast.classList.add("translate-y-4", "opacity-0");
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    function renderClassroom() {
+      const grid = document.getElementById("seatingGrid");
+      grid.innerHTML = "";
+
+      desks.forEach((desk) => {
+        const student = students.find(s => s.id === desk.assignedStudentId);
+        const isVacant = desk.assignedStudentId === null;
+        const isSelected = selectedDeskId === desk.deskId;
+
+        // Row and Column calculation (1-indexed)
+        const row = Math.ceil(desk.deskId / DESKS_PER_ROW);
+        const col = ((desk.deskId - 1) % DESKS_PER_ROW) + 1;
+
+        const card = document.createElement("div");
+        card.id = `desk-card-${desk.deskId}`;
+        card.className = `relative rounded-2xl transition-all duration-200 select-none cursor-pointer flex flex-col justify-between p-3.5 sm:p-4 border-2 shadow-lg ${
+          isSelected 
+            ? 'border-yellow-400 ring-4 ring-yellow-400/50 bg-slate-700 scale-105 z-20' 
+            : isVacant 
+              ? 'border-dashed border-slate-600/80 bg-slate-800/60 hover:border-slate-400 hover:bg-slate-700/60' 
+              : 'border-slate-600/90 bg-gradient-to-b from-slate-700 to-slate-750 hover:border-indigo-400 hover:shadow-indigo-500/20'
+        }`;
+
+        // Top info bar (Desk No. & Pin Button)
+        const topBar = document.createElement("div");
+        topBar.className = "flex items-center justify-between text-xs mb-2";
+
+        const deskBadge = document.createElement("span");
+        deskBadge.className = "font-extrabold px-2 py-0.5 rounded-md bg-slate-900/80 text-amber-300 border border-amber-500/30 flex items-center gap-1";
+        deskBadge.innerHTML = `<span class="text-[10px] text-slate-400 font-normal">${row}열-${col}</span> #${String(desk.deskId).padStart(2, '0')}`;
+
+        const lockBtn = document.createElement("button");
+        lockBtn.type = "button";
+        lockBtn.title = desk.locked ? "자리 고정 해제" : "자리 고정하기 (추첨 시 변경 안 됨)";
+        lockBtn.className = `p-1 rounded-md transition ${
+          desk.locked 
+            ? 'text-yellow-400 bg-yellow-400/20 hover:bg-yellow-400/30' 
+            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700'
+        }`;
+        lockBtn.innerHTML = desk.locked
+          ? `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>`
+          : `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>`;
+        
+        lockBtn.onclick = (e) => {
+          e.stopPropagation();
+          toggleLockDesk(desk.deskId);
+        };
+
+        topBar.appendChild(deskBadge);
+        topBar.appendChild(lockBtn);
+
+        // Student Content Area
+        const contentArea = document.createElement("div");
+        contentArea.className = "flex flex-col items-center justify-center my-2 py-1 text-center";
+
+        if (isVacant) {
+          contentArea.innerHTML = `
+            <div class="w-10 h-10 rounded-full border border-dashed border-slate-500 flex items-center justify-center text-slate-500 mb-1">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+              </svg>
+            </div>
+            <span class="text-xs font-semibold text-slate-400">빈자리</span>
+          `;
+        } else {
+          contentArea.innerHTML = `
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-500 text-white font-extrabold text-base flex items-center justify-center shadow-md mb-1.5 ring-2 ring-white/10">
+              ${student.id}
+            </div>
+            <div class="text-xs sm:text-sm font-bold text-white truncate max-w-full px-1">
+              ${student.name}
+            </div>
+          `;
+        }
+
+        // Bottom Desk visual feet
+        const bottomDeskFooter = document.createElement("div");
+        bottomDeskFooter.className = "flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-700/60";
+        bottomDeskFooter.innerHTML = `
+          <span>책상 #${desk.deskId}</span>
+          <span>${isSelected ? '선택됨 (교환할 자리 클릭)' : desk.locked ? '🔒 고정됨' : '클릭하여 교환'}</span>
+        `;
+
+        card.appendChild(topBar);
+        card.appendChild(contentArea);
+        card.appendChild(bottomDeskFooter);
+
+        // Click to swap logic
+        card.onclick = () => handleDeskClick(desk.deskId);
+
+        grid.appendChild(card);
+      });
+
+      renderRosterSummary();
+    }
+
+    function renderRosterSummary() {
+      const container = document.getElementById("studentRosterView");
+      container.innerHTML = "";
+
+      students.forEach(student => {
+        const assignedDesk = desks.find(d => d.assignedStudentId === student.id);
+        const item = document.createElement("div");
+        item.className = "flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs";
+        
+        if (assignedDesk) {
+          item.innerHTML = `
+            <div class="flex items-center gap-1.5 truncate">
+              <span class="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-[10px]">${student.id}</span>
+              <span class="font-medium text-slate-800 truncate">${student.name}</span>
+            </div>
+            <span class="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+              #${assignedDesk.deskId}
+            </span>
+          `;
+        } else {
+          item.innerHTML = `
+            <span class="text-slate-500">${student.id}번 ${student.name}</span>
+            <span class="text-rose-500 font-semibold">미배정</span>
+          `;
+        }
+        container.appendChild(item);
+      });
+    }
+
+    function handleDeskClick(deskId) {
+      if (isRolling) return; // Prevent during animation
+
+      if (selectedDeskId === null) {
+        selectedDeskId = deskId;
+        renderClassroom();
+        showToast(`${deskId}번 책상을 선택했습니다. 맞바꿀 다른 책상을 클릭하세요.`, "info");
+      } else if (selectedDeskId === deskId) {
+        // Deselect
+        selectedDeskId = null;
+        renderClassroom();
+      } else {
+        // Perform Swap between selectedDeskId and deskId
+        const deskA = desks.find(d => d.deskId === selectedDeskId);
+        const deskB = desks.find(d => d.deskId === deskId);
+
+        const tempStudent = deskA.assignedStudentId;
+        deskA.assignedStudentId = deskB.assignedStudentId;
+        deskB.assignedStudentId = tempStudent;
+
+        showToast(`${deskA.deskId}번 책상과 ${deskB.deskId}번 책상의 자리를 교환했습니다.`, "success");
+        selectedDeskId = null;
+        renderClassroom();
+      }
+    }
+
+    function toggleLockDesk(deskId) {
+      const target = desks.find(d => d.deskId === deskId);
+      if (target) {
+        target.locked = !target.locked;
+        renderClassroom();
+        showToast(target.locked ? `${deskId}번 자리가 고정되었습니다.` : `${deskId}번 자리 고정이 해제되었습니다.`, "info");
+      }
+    }
+
+    function resetToSequential() {
+      if (isRolling) return;
+      selectedDeskId = null;
+      desks.forEach((d, idx) => {
+        d.assignedStudentId = (idx + 1 <= TOTAL_STUDENTS) ? (idx + 1) : null;
+        d.locked = false;
+      });
+      renderClassroom();
+      showToast("책상 1번부터 25번까지 기본 순서대로 초기화되었습니다.", "info");
+    }
+
+    // Shuffle array utility
+    function shuffleArray(array) {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function triggerSeating(animated = true) {
+      if (isRolling) return;
+
+      // Desks eligible to change (not locked)
+      const unlockedDesks = desks.filter(d => !d.locked);
+      
+      // Students who are already locked in a desk
+      const lockedStudentIds = new Set(
+        desks.filter(d => d.locked && d.assignedStudentId !== null).map(d => d.assignedStudentId)
+      );
+
+      // Remaining student IDs to allocate
+      const availableStudents = [];
+      for (let i = 1; i <= TOTAL_STUDENTS; i++) {
+        if (!lockedStudentIds.has(i)) {
+          availableStudents.push(i);
+        }
+      }
+
+      // Remaining desks capacity minus remaining students will be empty seats (null)
+      const emptySeatsCount = unlockedDesks.length - availableStudents.length;
+      if (emptySeatsCount < 0) {
+        showToast("고정된 자리 설정으로 인해 학생 수가 책상 수를 초과했습니다.", "warning");
+        return;
+      }
+
+      const poolToAssign = [...availableStudents];
+      for (let k = 0; k < emptySeatsCount; k++) {
+        poolToAssign.push(null);
+      }
+
+      if (!animated) {
+        // Instant distribution
+        const shuffledPool = shuffleArray(poolToAssign);
+        unlockedDesks.forEach((desk, idx) => {
+          desk.assignedStudentId = shuffledPool[idx];
+        });
+        selectedDeskId = null;
+        renderClassroom();
+        playFanfareSound();
+        showToast("새로운 자리 배치가 즉시 완료되었습니다!", "success");
+        return;
+      }
+
+      // Animated Roll
+      startRollingAnimation(unlockedDesks, poolToAssign);
+    }
+
+    function startRollingAnimation(unlockedDesks, finalPool) {
+      isRolling = true;
+      selectedDeskId = null;
+
+      const shuffleBtn = document.getElementById("shuffleBtn");
+      const instantBtn = document.getElementById("instantBtn");
+      const spinner = document.getElementById("loadingSpinner");
+      const dice = document.getElementById("diceIcon");
+
+      shuffleBtn.disabled = true;
+      instantBtn.disabled = true;
+      spinner.classList.remove("hidden");
+      dice.classList.add("hidden");
+
+      // Add visual rolling classes to cards
+      unlockedDesks.forEach(desk => {
+        const card = document.getElementById(`desk-card-${desk.deskId}`);
+        if (card) card.classList.add("animate-rolling", "opacity-80");
+      });
+
+      let iteration = 0;
+      const totalSteps = 24; // 24 iterations for dramatic suspense
+      const intervalSpeed = 80;
+
+      const rollTimer = setInterval(() => {
+        iteration++;
+        playTickSound();
+
+        // Temporary flicker random numbers on unlocked desks
+        unlockedDesks.forEach(desk => {
+          const card = document.getElementById(`desk-card-${desk.deskId}`);
+          if (card) {
+            const randomVal = Math.random() > 0.15 ? Math.floor(Math.random() * TOTAL_STUDENTS) + 1 : "빈자리";
+            const content = card.querySelector("div:nth-child(2)");
+            if (content) {
+              content.innerHTML = `
+                <div class="w-10 h-10 rounded-xl bg-indigo-500/70 text-white font-extrabold text-base flex items-center justify-center animate-bounce">
+                  ${typeof randomVal === 'number' ? randomVal : '?'}
+                </div>
+                <div class="text-xs font-semibold text-indigo-200 mt-1">배정 중...</div>
+              `;
+            }
+          }
+        });
+
+        if (iteration >= totalSteps) {
+          clearInterval(rollTimer);
+          
+          // Apply final shuffled state
+          const shuffledPool = shuffleArray(finalPool);
+          unlockedDesks.forEach((desk, idx) => {
+            desk.assignedStudentId = shuffledPool[idx];
+          });
+
+          // Finish
+          isRolling = false;
+          shuffleBtn.disabled = false;
+          instantBtn.disabled = false;
+          spinner.classList.add("hidden");
+          dice.classList.remove("hidden");
+
+          renderClassroom();
+          playFanfareSound();
+          showToast("🎉 새로운 자리가 공정하게 배치되었습니다!", "success");
+        }
+      }, intervalSpeed);
+    }
+
+    function openStudentModal() {
+      const grid = document.getElementById("studentInputsGrid");
+      grid.innerHTML = "";
+
+      students.forEach(s => {
+        const wrap = document.createElement("div");
+        wrap.className = "flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200";
+        wrap.innerHTML = `
+          <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0">${s.id}</span>
+          <input type="text" id="student-name-input-${s.id}" value="${s.name}" class="w-full text-xs sm:text-sm font-medium bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        `;
+        grid.appendChild(wrap);
+      });
+
+      document.getElementById("studentModal").classList.remove("hidden");
+    }
+
+    function closeStudentModal() {
+      document.getElementById("studentModal").classList.add("hidden");
+    }
+
+    function saveStudentNames() {
+      students.forEach(s => {
+        const input = document.getElementById(`student-name-input-${s.id}`);
+        if (input && input.value.trim() !== "") {
+          s.name = input.value.trim();
+        }
+      });
+      closeStudentModal();
+      renderClassroom();
+      showToast("학생 명단이 성공적으로 업데이트되었습니다.", "success");
+    }
+
+    function fillSampleNames() {
+      const sampleNames = [
+        "김민준", "이서준", "박도윤", "최예준", "정시우",
+        "강하준", "조주원", "윤지호", "장지후", "임준우",
+        "한서연", "오서윤", "서지우", "신서현", "권하은",
+        "황민서", "안지유", "송윤서", "전채원", "홍수아",
+        "배지민", "백다은", "유소율", "남은서", "심채은"
+      ];
+      sampleNames.forEach((name, idx) => {
+        const input = document.getElementById(`student-name-input-${idx + 1}`);
+        if (input) input.value = name;
+      });
+      showToast("25명의 모범 예시 이름이 입력란에 입력되었습니다. '저장 적용'을 누르세요.", "info");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderClassroom();
+    });
+  </script>
+</body>
+</html>
